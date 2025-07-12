@@ -1,0 +1,29 @@
+[project]
+name = "tech-challenge-02"
+version = "0.1.0"
+description = "Tech Challenge 02"
+authors = [
+    {name = "ML-Group-37"}
+]
+readme = "README.md"
+requires-python = "^3.8"
+dependencies = [
+]
+
+[tool.poetry]
+name = "tech-challenge-02"
+version = "0.1.0"
+description = "Tech Challenge 02"
+authors = ["ML-Group-37"]
+readme = "README.md"
+packages = [{include = "tech_challenge_02", from = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

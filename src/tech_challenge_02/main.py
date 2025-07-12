@@ -1,5 +1,5 @@
 def main():
-    pass
+    print("Tech Challenge 02 is running!")
 
 if __name__ == "__main__":
     main() 
