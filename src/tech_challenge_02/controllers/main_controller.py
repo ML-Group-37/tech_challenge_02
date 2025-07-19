@@ -21,6 +21,7 @@ def setup_chrome_driver():
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
+    chrome_options.page_load_strategy = 'eager'  # Don't wait for all resources to load
     return webdriver.Chrome(options=chrome_options)
 
 def wait_for_element(driver, by, value, timeout=20, error_message=None):
@@ -75,20 +76,6 @@ def validate_page_number(driver, requested_page):
 
 def select_page(driver, target_page):
     """Click on the specified page number"""
-    # Get current page info
-    current_page, total_pages = get_pagination_info(driver)
-    
-    # If already on target page, no need to click
-    if current_page == target_page:
-        return
-        
-    # Validate target page
-    if target_page < 1 or target_page > total_pages:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Page number out of bounds. Available pages: 1 through {total_pages}"
-        )
-    
     # Find and click the target page number
     pagination = wait_for_element(
         driver,
@@ -101,24 +88,26 @@ def select_page(driver, target_page):
     
     # Look for the page number in the pagination
     for item in pagination.find_elements(By.TAG_NAME, "li"):
-        if item.text.strip() == str(target_page):
-            try:
-                # Find and click the link inside the li element
-                link = item.find_element(By.TAG_NAME, "a")
-                link.click()
-                target_found = True
-                
-                # Wait for new page content
-                wait = WebDriverWait(driver, 10)
-                wait.until(
-                    lambda d: get_pagination_info(d)[0] == target_page
-                )
-                break
-            except Exception as e:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Error clicking page {target_page}: {str(e)}"
-                )
+        text = item.text.strip()
+        if text and text.split("\n")[-1].strip().isdigit():
+            if int(text.split("\n")[-1]) == target_page:
+                try:
+                    # Find and click the link inside the li element
+                    link = item.find_element(By.TAG_NAME, "a")
+                    link.click()
+                    target_found = True
+                    
+                    # Wait for new page content
+                    wait = WebDriverWait(driver, 20)
+                    wait.until(
+                        lambda d: get_pagination_info(d)[0] == target_page
+                    )
+                    break
+                except Exception as e:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Error clicking page {target_page}: {str(e)}"
+                    )
     
     if not target_found:
         raise HTTPException(
@@ -173,14 +162,14 @@ def extract_table_data(driver):
     
     return headers, rows
 
-def save_to_csv(headers, rows):
+def save_to_csv(headers, rows, page_number):
     """Save the data to a CSV file"""
     try:
         if not os.path.exists('data'):
             os.makedirs('data')
             
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"b3_stocks_{timestamp}.csv"
+        filename = f"b3_stocks_{timestamp} - page {page_number}.csv"
         filepath = os.path.join('data', filename)
         
         with open(filepath, 'w', newline='', encoding='utf-8') as f:
@@ -218,7 +207,7 @@ async def scrape_b3_data(page: int = Query(1, description="Page number to scrape
         
         # 4. Extract and save data
         headers, rows = extract_table_data(driver)
-        filepath = save_to_csv(headers, rows)
+        filepath = save_to_csv(headers, rows, page)
         
         # 5. Get current page info for response
         current_page, total_pages = get_pagination_info(driver)
