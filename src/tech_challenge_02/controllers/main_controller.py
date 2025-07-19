@@ -14,6 +14,66 @@ router = APIRouter(
     tags=["Main"]
 )
 
+def setup_chrome_driver():
+    """Configure and return a headless Chrome driver"""
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    return webdriver.Chrome(options=chrome_options)
+
+def get_table_element(driver):
+    """Wait for and return the B3 stocks table element"""
+    wait = WebDriverWait(driver, 20)
+    return wait.until(
+        EC.presence_of_element_located((By.CLASS_NAME, "table.table-responsive-sm.table-responsive-md"))
+    )
+
+def extract_headers(table):
+    """Extract column headers from the table"""
+    header_elements = table.find_elements(By.TAG_NAME, "th")
+    return [header.text.strip() for header in header_elements]
+
+def convert_value(value, column_index):
+    """Convert string values to appropriate number types"""
+    if column_index == 3:  # Qtde. Teórica
+        return float(value.replace(".", ""))
+    elif column_index == 4:  # Part. (%)
+        return float(value.replace("%", "").replace(",", "."))
+    return value
+
+def extract_rows(table):
+    """Extract and convert row data from the table"""
+    rows = []
+    row_elements = table.find_elements(By.TAG_NAME, "tr")[1:-2]  # Skip header and last 2 rows
+    
+    for row_element in row_elements:
+        cells = row_element.find_elements(By.TAG_NAME, "td")
+        if cells:
+            row = [
+                convert_value(cell.text.strip(), i)
+                for i, cell in enumerate(cells)
+            ]
+            rows.append(row)
+    
+    return rows
+
+def save_to_csv(headers, rows):
+    """Save the data to a CSV file and return the filepath"""
+    if not os.path.exists('data'):
+        os.makedirs('data')
+        
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"b3_stocks_{timestamp}.csv"
+    filepath = os.path.join('data', filename)
+    
+    with open(filepath, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow(headers)
+        writer.writerows(rows)
+    
+    return filepath
+
 @router.get("/scrape-b3")
 async def scrape_b3_data():
     """
@@ -22,64 +82,18 @@ async def scrape_b3_data():
     """
     driver = None
     try:
-        # 1. Setup Chrome in headless mode
-        chrome_options = Options()
-        chrome_options.add_argument("--headless")  # Ensures GUI isn't needed
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
+        # 1. Setup and get data
+        driver = setup_chrome_driver()
+        driver.get("https://sistemaswebb3-listados.b3.com.br/indexPage/day/IBOV?language=pt-br")
         
-        driver = webdriver.Chrome(options=chrome_options)
+        # 2. Get table and extract data
+        table = get_table_element(driver)
+        headers = extract_headers(table)
+        rows = extract_rows(table)
         
-        # 2. Get the webpage
-        url = "https://sistemaswebb3-listados.b3.com.br/indexPage/day/IBOV?language=pt-br"
-        driver.get(url)
+        # 3. Save data
+        filepath = save_to_csv(headers, rows)
         
-        # 3. Wait for table to be present and visible
-        wait = WebDriverWait(driver, 20)  # Increased wait time to 20 seconds
-        table = wait.until(
-            EC.presence_of_element_located((By.CLASS_NAME, "table.table-responsive-sm.table-responsive-md"))
-        )
-        
-        # 4. Extract headers
-        headers = []
-        header_elements = table.find_elements(By.TAG_NAME, "th")
-        for header in header_elements:
-            headers.append(header.text.strip())
-            
-        # 5. Extract rows
-        rows = []
-        row_elements = table.find_elements(By.TAG_NAME, "tr")[1:]  # Skip header row
-        for row_element in row_elements:
-            row = []
-            cells = row_element.find_elements(By.TAG_NAME, "td")
-            if cells:  # Only process rows with td elements
-                for cell in cells:
-                    # Get text and clean it up
-                    value = cell.text.strip()
-                    # Convert percentage values to proper decimal format
-                    if "%" in value:
-                        value = value.replace("%", "").replace(",", ".")
-                    # Convert numeric values with Brazilian formatting
-                    elif "." in value and "," in value:
-                        value = value.replace(".", "").replace(",", ".")
-                    row.append(value)
-                rows.append(row)
-                
-        # 6. Create data directory if it doesn't exist
-        if not os.path.exists('data'):
-            os.makedirs('data')
-            
-        # 7. Generate filename with timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"b3_stocks_{timestamp}.csv"
-        filepath = os.path.join('data', filename)
-        
-        # 8. Save to CSV file
-        with open(filepath, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow(headers)
-            writer.writerows(rows)
-            
         return {
             "message": "Data saved successfully",
             "file": filepath,
