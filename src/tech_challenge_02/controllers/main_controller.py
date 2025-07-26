@@ -1,6 +1,9 @@
 import os
-from datetime import datetime
+import pandas as pd
+import boto3
+import tempfile
 import csv
+from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -8,6 +11,17 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import TimeoutException
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# S3 configuration (replace with your actual values or use environment variables)
+S3_BUCKET = os.getenv("S3_BUCKET", os.getenv("S3_BUCKET"))
+S3_PREFIX = os.getenv("S3_PREFIX", "parquet_data")
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+AWS_SESSION_TOKEN = os.getenv("AWS_SESSION_TOKEN")
+AWS_DEFAULT_REGION = os.getenv("AWS_DEFAULT_REGION")
 
 router = APIRouter(
     prefix="/api",
@@ -184,13 +198,34 @@ def save_to_csv(headers, rows, page_number):
             detail=f"Error saving CSV file: {str(e)}"
         )
 
+def csv_to_parquet(csv_path):
+    """Convert a CSV file to Parquet and return the Parquet file path."""
+    df = pd.read_csv(csv_path)
+    with tempfile.NamedTemporaryFile(suffix=".parquet", delete=False) as tmp_parquet:
+        parquet_path = tmp_parquet.name
+    df.to_parquet(parquet_path, index=False)
+    return parquet_path
+
+def upload_file_to_s3(local_path, s3_bucket, s3_key):
+    """Upload a file to S3 using explicit credentials from environment variables."""
+    s3 = boto3.client(
+        "s3",
+        aws_access_key_id=AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+        aws_session_token=AWS_SESSION_TOKEN if AWS_SESSION_TOKEN else None,
+        region_name=AWS_DEFAULT_REGION if AWS_DEFAULT_REGION else None
+    )
+    s3.upload_file(local_path, s3_bucket, s3_key)
+
+def get_s3_parquet_key(prefix, date, filename):
+    """Build the S3 key for daily partitioning."""
+    return f"{prefix}/date={date}/{filename}"
+
 @router.get("/scrape-b3")
 async def scrape_b3_data(page: int = Query(1, description="Page number to scrape")):
     """
     Scrapes the B3 stock table for a specific page and saves it to a CSV file.
-    
-    Parameters:
-    - page: Page number to scrape (default: 1)
+    Also uploads the data as Parquet to S3 with daily partitioning.
     """
     driver = None
     try:
@@ -208,13 +243,23 @@ async def scrape_b3_data(page: int = Query(1, description="Page number to scrape
         # 4. Extract and save data
         headers, rows = extract_table_data(driver)
         filepath = save_to_csv(headers, rows, page)
+
+        # --- New: Convert CSV to Parquet and upload to S3 ---
+        parquet_path = csv_to_parquet(filepath)
+        today = datetime.now().strftime("%Y-%m-%d")
+        parquet_filename = os.path.basename(parquet_path)
+        s3_key = get_s3_parquet_key(S3_PREFIX, today, parquet_filename)
+        upload_file_to_s3(parquet_path, S3_BUCKET, s3_key)
+        os.remove(parquet_path)
+        # --- End new code ---
         
         # 5. Get current page info for response
         current_page, total_pages = get_pagination_info(driver)
         
         return {
-            "message": "Data saved successfully",
+            "message": "Data saved successfully and uploaded to S3 as Parquet",
             "file": filepath,
+            "s3_key": s3_key,
             "total_rows": len(rows),
             "current_page": current_page,
             "total_pages": total_pages

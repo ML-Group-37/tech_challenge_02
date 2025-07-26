@@ -7,6 +7,25 @@ This repository contains a FastAPI-based REST API with Swagger documentation.
 - Python 3.9 or higher
 - Poetry (Python package manager)
 
+## AWS Credentials & S3 Configuration
+
+To enable Parquet uploads to S3, set the following environment variables before running the application:
+
+```
+# Required for S3 upload:
+export AWS_ACCESS_KEY_ID=your-access-key-id
+export AWS_SECRET_ACCESS_KEY=your-secret-access-key
+# (Optional, for temporary credentials)
+export AWS_SESSION_TOKEN=your-session-token
+
+# S3 bucket and prefix:
+export S3_BUCKET=your-bucket-name
+export S3_PREFIX=parquet_data  # (optional, defaults to 'parquet_data')
+```
+
+- You can also configure AWS credentials using the AWS CLI (`aws configure`) or IAM roles if running on AWS infrastructure.
+- The application will use these credentials to upload Parquet files to S3 with daily partitioning.
+
 ## Installation
 
 1. Clone the repository:
@@ -24,7 +43,7 @@ poetry install
 
 1. Start the FastAPI server:
 ```bash
-poetry run python -m tech_challenge_02.main
+poetry run python src/tech_challenge_02/main.py
 ```
 
 2. The API will be available at:
