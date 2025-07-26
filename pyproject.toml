@@ -6,13 +6,16 @@ authors = [
     {name = "ML-Group-37"}
 ]
 readme = "README.md"
-requires-python = "^3.8"
+requires-python = ">=3.9,<3.12"
 dependencies = [
     "fastapi (>=0.116.1,<0.117.0)",
     "uvicorn (>=0.35.0,<0.36.0)",
     "boto3 (>=1.39.4,<2.0.0)",
     "requests (>=2.31.0,<3.0.0)",
-    "selenium (>=4.18.1,<5.0.0)"
+    "selenium (>=4.18.1,<5.0.0)",
+    "pandas (>=2.0.0,<3.0.0)",
+    "pyarrow (>=15.0.0,<16.0.0)",
+    "python-dotenv (>=1.0.0,<2.0.0)"
 ]
 
 [tool.poetry]
@@ -24,7 +27,7 @@ readme = "README.md"
 packages = [{include = "tech_challenge_02", from = "src"}]
 
 [tool.poetry.dependencies]
-python = "^3.9"
+python = ">=3.9,<3.12"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.1"
