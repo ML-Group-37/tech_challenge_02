@@ -148,7 +148,8 @@ def extract_table_data(driver):
     
     for th in header_rows:
         headers.append(th.text.strip())
-    
+    headers.append("timestamp")
+
     # Get rows (excluding last 2 rows which are totals)
     rows = []
     data_rows = table.find_elements(By.TAG_NAME, "tr")[1:-2]  # Skip header row
@@ -172,6 +173,7 @@ def extract_table_data(driver):
                         detail=f"Error converting value '{value}' at column {i}: {str(e)}"
                     )
                 row_data.append(value)
+            row_data.append(datetime.now().timestamp())
             rows.append(row_data)
     
     return headers, rows
